@@ -21,6 +21,7 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 # Small in-memory cache: the same field is often submitted several times.
 WEATHER_CACHE = {}
 CACHE_TTL_SECONDS = 600
+MAX_FIELDS = 20
 
 app = FastAPI(title="Suaru", description="Оценка воды, дизеля и CO2 для поля")
 
@@ -61,6 +62,51 @@ class PlanResponse(BaseModel):
     stage: str = Field(..., description="Стадия роста", examples=["mid"])
     kc: float = Field(..., description="Коэффициент культуры Kc для выбранной стадии", examples=[1.15])
     daily: list[DailyPlan] = Field(..., description="Разбивка по дням")
+
+
+class BatchField(PlanRequest):
+    """Одно поле из списка: те же поля, что в /api/plan, плюс название."""
+
+    name: str = Field("", description="Название поля (необязательно)", examples=["Поле у реки"])
+
+
+class FieldPlan(BaseModel):
+    name: str = Field(..., description="Название поля", examples=["Поле у реки"])
+    plan: PlanResponse
+
+
+class BatchTotals(BaseModel):
+    area_ha: float = Field(..., description="Суммарная площадь, га", examples=[20])
+    m3: float = Field(..., description="Суммарный объём воды, м³", examples=[989.0])
+    diesel_l: float = Field(..., description="Суммарный дизель, л", examples=[120.0])
+    co2_kg: float = Field(..., description="Суммарный CO2 от дизеля, кг", examples=[318.0])
+
+
+class BatchRequest(BaseModel):
+    fields: list[BatchField] = Field(
+        ...,
+        description=f"Полей: от 1 до {MAX_FIELDS}",
+        examples=[
+            [
+                {
+                    "name": "Поле у реки",
+                    "lat": 43.24,
+                    "lon": 76.89,
+                    "crop": "wheat",
+                    "stage": "mid",
+                    "area_ha": 10,
+                    "l_per_h": 12,
+                    "ha_per_h": 2,
+                    "days": 3,
+                }
+            ]
+        ],
+    )
+
+
+class BatchResponse(BaseModel):
+    fields: list[FieldPlan] = Field(..., description="План по каждому полю")
+    totals: BatchTotals = Field(..., description="Суммы по всем полям")
 
 
 # Pydantic errors (e.g. text instead of a number) → 400 in Russian
@@ -129,34 +175,37 @@ async def fetch_weather(lat: float, lon: float, days: int):
     return result
 
 
-# ── POST /api/plan ───────────────────────────────────────────
-@app.post(
-    "/api/plan",
-    response_model=PlanResponse,
-    responses={
-        400: {"description": "Неверные данные формы"},
-        502: {"description": "Open-Meteo не ответил"},
-    },
-)
-async def api_plan(req: PlanRequest):
-    # Validation with clear Russian messages
-    if req.crop not in calc.KC:
-        raise HTTPException(status_code=400, detail="Неизвестная культура")
-    if req.stage not in calc.STAGES:
-        raise HTTPException(status_code=400, detail="Неизвестная стадия роста")
-    if req.area_ha <= 0:
-        raise HTTPException(status_code=400, detail="Площадь поля должна быть больше нуля")
-    if req.l_per_h <= 0:
-        raise HTTPException(status_code=400, detail="Расход топлива должен быть больше нуля")
-    if req.ha_per_h <= 0:
-        raise HTTPException(status_code=400, detail="Скорость обработки должна быть больше нуля")
-    if not (-90 <= req.lat <= 90 and -180 <= req.lon <= 180):
-        raise HTTPException(status_code=400, detail="Координаты вне допустимого диапазона")
-    if not (1 <= req.days <= 7):
-        raise HTTPException(status_code=400, detail="Количество дней должно быть от 1 до 7")
+# ── Helpers for one field ──────────────────────────────────
+def validate_field(req: PlanRequest, prefix: str = ""):
+    """Check one field and raise 400 with a Russian message.
 
+    `prefix` names the field inside a batch, e.g. "Поле 2: ".
+    """
+    if req.crop not in calc.KC:
+        raise HTTPException(status_code=400, detail=f"{prefix}Неизвестная культура")
+    if req.stage not in calc.STAGES:
+        raise HTTPException(status_code=400, detail=f"{prefix}Неизвестная стадия роста")
+    if req.area_ha <= 0:
+        raise HTTPException(status_code=400, detail=f"{prefix}Площадь поля должна быть больше нуля")
+    if req.l_per_h <= 0:
+        raise HTTPException(status_code=400, detail=f"{prefix}Расход топлива должен быть больше нуля")
+    if req.ha_per_h <= 0:
+        raise HTTPException(status_code=400, detail=f"{prefix}Скорость обработки должна быть больше нуля")
+    if not (-90 <= req.lat <= 90 and -180 <= req.lon <= 180):
+        raise HTTPException(status_code=400, detail=f"{prefix}Координаты вне допустимого диапазона")
+    if not (1 <= req.days <= 7):
+        raise HTTPException(status_code=400, detail=f"{prefix}Количество дней должно быть от 1 до 7")
+
+
+async def plan_for(req: PlanRequest, weather=None):
+    """Fetch weather and calculate the plan for one validated field.
+
+    `weather` lets a batch pass an already fetched (and cached) result.
+    """
     kc = calc.crop_kc(req.crop, req.stage)
-    dates, et0, rain = await fetch_weather(req.lat, req.lon, req.days)
+    if weather is None:
+        weather = await fetch_weather(req.lat, req.lon, req.days)
+    dates, et0, rain = weather
 
     daily = []
     total_mm = 0.0
@@ -186,6 +235,73 @@ async def api_plan(req: PlanRequest):
         "kc": kc,
         "daily": daily,
     }
+
+
+# ── POST /api/plan ───────────────────────────────────────────
+@app.post(
+    "/api/plan",
+    response_model=PlanResponse,
+    responses={
+        400: {"description": "Неверные данные формы"},
+        502: {"description": "Open-Meteo не ответил"},
+    },
+)
+async def api_plan(req: PlanRequest):
+    validate_field(req)
+    return await plan_for(req)
+
+
+# ── POST /api/plan/batch («Мои поля») ─────────────────────────
+@app.post(
+    "/api/plan/batch",
+    response_model=BatchResponse,
+    responses={
+        400: {"description": "Неверные данные полей"},
+        502: {"description": "Open-Meteo не ответил"},
+    },
+)
+async def api_plan_batch(req: BatchRequest):
+    if not req.fields:
+        raise HTTPException(status_code=400, detail="Добавьте хотя бы одно поле")
+    if len(req.fields) > MAX_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Слишком много полей (максимум {MAX_FIELDS})")
+
+    # Validate every field before calling the weather API.
+    labels = []
+    for index, field in enumerate(req.fields, start=1):
+        name = field.name.strip()
+        labels.append(name or f"Поле {index}")
+        prefix = f"Поле «{name}» ({index}): " if name else f"Поле {index}: "
+        validate_field(field, prefix)
+
+    # The same coordinates share one weather request: fetch each place once,
+    # then calculate every field from its own Kc.
+    places = {}
+    for field in req.fields:
+        places.setdefault(cache_key(field.lat, field.lon, field.days), field)
+    weather = await asyncio.gather(
+        *(fetch_weather(f.lat, f.lon, f.days) for f in places.values())
+    )
+    by_place = dict(zip(places.keys(), weather))
+
+    plans = await asyncio.gather(
+        *(
+            plan_for(field, by_place[cache_key(field.lat, field.lon, field.days)])
+            for field in req.fields
+        )
+    )
+
+    fields = []
+    totals = {"area_ha": 0.0, "m3": 0.0, "diesel_l": 0.0, "co2_kg": 0.0}
+    for field, name, plan in zip(req.fields, labels, plans):
+        fields.append({"name": name, "plan": plan})
+        totals["area_ha"] += field.area_ha
+        totals["m3"] += plan["m3"]
+        totals["diesel_l"] += plan["diesel_l"]
+        totals["co2_kg"] += plan["co2_kg"]
+
+    totals = {key: round(value, 2) for key, value in totals.items()}
+    return {"fields": fields, "totals": totals}
 
 
 # ── Static frontend (mount LAST so /api stays on top) ────────

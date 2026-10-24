@@ -130,6 +130,48 @@
     .method summary { cursor: pointer; font-weight: 600; color: var(--green-dark); }
     .method p { margin: 8px 0 0; line-height: 1.45; }
 
+    button.btn-secondary { background: #fff; color: var(--green); border: 1px solid var(--green); }
+    button.btn-secondary:hover { background: #e9f6ee; }
+    .btn-gap { margin-top: 10px; }
+
+    .fields { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+    .fields-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .fields-head h2 { margin: 0; font-size: 1rem; }
+    .link-btn {
+      border: 0; background: none; padding: 0;
+      font-size: 0.72rem; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    .link-btn:hover { color: var(--red); }
+    .fields ul { list-style: none; margin: 0 0 10px; padding: 0; }
+    .fields li {
+      display: flex; align-items: baseline; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.78rem;
+    }
+    .fields li:last-child { border-bottom: 0; }
+    .fields .f-name { font-weight: 600; }
+    .fields .f-meta { flex: 1; color: var(--muted); font-size: 0.72rem; }
+    .fields .del {
+      border: 0; background: none; padding: 0 2px;
+      font-size: 1rem; line-height: 1; color: var(--muted); cursor: pointer;
+    }
+    .fields .del:hover { color: var(--red); }
+
+    .batch { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+    .batch h2 { margin: 0 0 10px; font-size: 1rem; }
+    .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .table-wrap { overflow-x: auto; }
+    .table-wrap table { border-collapse: collapse; width: 100%; min-width: 430px; font-size: 0.72rem; }
+    .table-wrap th, .table-wrap td {
+      padding: 6px; border-bottom: 1px solid var(--line);
+      text-align: right; white-space: nowrap;
+    }
+    .table-wrap th { color: var(--muted); font-size: 0.68rem; font-weight: 600; }
+    .table-wrap th:first-child, .table-wrap td:first-child,
+    .table-wrap th:nth-child(2), .table-wrap td:nth-child(2) { text-align: left; }
+    .table-wrap tbody tr { cursor: pointer; }
+    .table-wrap tbody tr:hover { background: #f5f8f6; }
+    .table-wrap tbody tr.selected { background: #e9f6ee; }
+
     .error {
       margin: 12px 0 0;
       padding: 9px 10px;
@@ -164,6 +206,10 @@
     <p class="tagline">Вода, дизель и CO₂ для вашего поля</p>
 
     <form id="plan-form">
+      <label>Название поля
+        <input id="field_name" type="text" maxlength="40" placeholder="Например, Поле у реки">
+      </label>
+
       <label>Культура
         <select id="crop">
           <option value="wheat">Пшеница</option>
@@ -171,6 +217,14 @@
           <option value="corn">Кукуруза</option>
           <option value="potato">Картофель</option>
           <option value="rice">Рис</option>
+        </select>
+      </label>
+
+      <label>Стадия роста
+        <select id="stage">
+          <option value="ini">Начало роста</option>
+          <option value="mid" selected>Середина</option>
+          <option value="end">Конец</option>
         </select>
       </label>
 
@@ -194,7 +248,50 @@
 
       <p class="hint" id="hint">Нажмите на карту, чтобы указать поле</p>
       <button id="submit" type="submit">Рассчитать</button>
+      <button id="add-field" class="btn-secondary btn-gap" type="button">Добавить поле</button>
     </form>
+
+    <section class="fields" id="fields-section" hidden>
+      <div class="fields-head">
+        <h2>Мои поля</h2>
+        <button class="link-btn" id="clear-all" type="button">Очистить всё</button>
+      </div>
+      <ul id="fields-list"></ul>
+      <button id="calc-all" type="button">Рассчитать все</button>
+    </section>
+
+    <section class="batch" id="batch" hidden>
+      <h2>Итоги по всем полям</h2>
+      <div class="totals">
+        <div class="mini">
+          <div class="value"><span id="tot-area">—</span> <small>га</small></div>
+          <div class="label">площадь всех полей</div>
+        </div>
+        <div class="mini">
+          <div class="value"><span id="tot-m3">—</span> <small>м³</small></div>
+          <div class="label">вода</div>
+        </div>
+        <div class="mini">
+          <div class="value"><span id="tot-diesel">—</span> <small>л</small></div>
+          <div class="label">дизель</div>
+        </div>
+        <div class="mini">
+          <div class="value"><span id="tot-co2">—</span> <small>кг</small></div>
+          <div class="label">CO₂</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Поле</th><th>Культура</th><th>га</th><th>м³</th><th>л</th><th>CO₂ кг</th>
+            </tr>
+          </thead>
+          <tbody id="batch-rows"></tbody>
+        </table>
+      </div>
+      <p class="note">Клик по строке — дневная разбивка этого поля. Миллиметры по разным полям не суммируются.</p>
+    </section>
 
     <section class="result" id="result" hidden>
       <h2>Оценка для поля</h2>
@@ -215,15 +312,15 @@
         </div>
       </div>
       <div id="daily"></div>
-      <p class="note">Это оценка: почва, стадия роста и потери при поливе не учитываются; дизель — один проход техники.</p>
+      <p class="note">Это оценка: почва и потери при поливе не учитываются; стадия роста задаёт Kc (FAO-56); дизель — один проход техники.</p>
     </section>
 
     <details class="method">
       <summary>Как считаем</summary>
       <p>Вода за день: <b>max(0, ET0 × Kc − дождь)</b>. ET0 и дождь — прогноз Open-Meteo; 1 мм на 1 га = 10 м³.</p>
-      <p>Kc — mid-season из FAO-56, Table 12. Для выбранной культуры: <span id="method-kc">—</span>.</p>
+      <p>Kc — из FAO-56, Table 12 для выбранной стадии роста. Для текущего расчёта: <span id="method-kc">—</span>.</p>
       <p>Дизель: площадь × (л/ч ÷ га/ч) — один проход техники. CO₂: литры × 2.65 кг/л (IPCC 2006).</p>
-      <p>Почва, стадия роста и потери при поливе не учитываются — это оценка.</p>
+      <p>Почва и потери при поливе не учитываются — это оценка.</p>
     </details>
 
     <p class="error" id="error" hidden></p>
@@ -244,6 +341,10 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
+    const STORAGE_KEY = 'suaru_fields_v1';
+    const CROPS = { wheat: 'Пшеница', barley: 'Ячмень', corn: 'Кукуруза', potato: 'Картофель', rice: 'Рис' };
+    const STAGE_LABELS = { ini: 'Начало роста', mid: 'Середина', end: 'Конец' };
+
     let marker = null;
     const hint = document.getElementById('hint');
     const form = document.getElementById('plan-form');
@@ -252,6 +353,16 @@
     const resultBox = document.getElementById('result');
     const dailyBox = document.getElementById('daily');
     const methodKc = document.getElementById('method-kc');
+    const nameInput = document.getElementById('field_name');
+    const fieldsSection = document.getElementById('fields-section');
+    const fieldsList = document.getElementById('fields-list');
+    const calcAllBtn = document.getElementById('calc-all');
+    const batchBox = document.getElementById('batch');
+    const batchRows = document.getElementById('batch-rows');
+
+    // «Мои поля»: храним только входные данные, результаты не кэшируем
+    let fields = loadFields();
+    let lastBatch = null;
 
     // Скрыть старый результат: он относится к прежней точке или форме
     function invalidateResult() {
@@ -285,6 +396,11 @@
 
     function fmt(value, digits) {
       return Number(value).toLocaleString('ru-RU', { maximumFractionDigits: digits });
+    }
+
+    // Числа только из API; если поля нет — показываем «—», а не NaN
+    function num(value, digits) {
+      return Number.isFinite(Number(value)) ? fmt(value, digits) : '—';
     }
 
     function formatDate(iso) {
@@ -327,6 +443,209 @@
       });
     }
 
+    // ── «Мои поля» (localStorage, только входные данные) ─────
+    function loadFields() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list.filter((f) => f && typeof f === 'object') : [];
+      } catch (err) {
+        return [];
+      }
+    }
+
+    function saveFields() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(fields));
+      } catch (err) {
+        showError('Не удалось сохранить поля в браузере');
+      }
+    }
+
+    // Состав полей изменился — старые итоги показывать нельзя
+    function hideBatch() {
+      lastBatch = null;
+      batchBox.hidden = true;
+      resultBox.hidden = true;
+    }
+
+    function renderFields() {
+      fieldsList.innerHTML = '';
+      fieldsSection.hidden = fields.length === 0;
+
+      fields.forEach((field, index) => {
+        const item = document.createElement('li');
+
+        const name = document.createElement('span');
+        name.className = 'f-name';
+        name.textContent = field.name;
+
+        const meta = document.createElement('span');
+        meta.className = 'f-meta';
+        const stageName = (STAGE_LABELS[field.stage] || STAGE_LABELS.mid).toLowerCase();
+        meta.textContent = `${CROPS[field.crop] || field.crop} · ${num(field.area_ha, 1)} га · ${stageName}`;
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'del';
+        del.title = 'Удалить поле';
+        del.setAttribute('aria-label', `Удалить ${field.name}`);
+        del.textContent = '×';
+        del.addEventListener('click', () => {
+          fields.splice(index, 1);
+          saveFields();
+          renderFields();
+          hideBatch();
+        });
+
+        item.append(name, meta, del);
+        fieldsList.appendChild(item);
+      });
+    }
+
+    document.getElementById('add-field').addEventListener('click', () => {
+      errorBox.hidden = true;
+      if (!marker) {
+        showError('Сначала нажмите на карту, чтобы указать поле');
+        return;
+      }
+      if (fields.length >= 20) {
+        showError('Слишком много полей (максимум 20)');
+        return;
+      }
+
+      const areaHa = Number(document.getElementById('area_ha').value);
+      const lPerH = Number(document.getElementById('l_per_h').value);
+      const haPerH = Number(document.getElementById('ha_per_h').value);
+      const days = Number(document.getElementById('days').value);
+      if (!(areaHa > 0) || !(lPerH > 0) || !(haPerH > 0) || !(days >= 1 && days <= 7)) {
+        showError('Проверьте данные формы');
+        return;
+      }
+
+      const latlng = marker.getLatLng();
+      fields.push({
+        name: nameInput.value.trim() || `Поле ${fields.length + 1}`,
+        lat: Number(latlng.lat.toFixed(5)),
+        lon: Number(latlng.lng.toFixed(5)),
+        crop: document.getElementById('crop').value,
+        stage: document.getElementById('stage').value,
+        area_ha: areaHa,
+        l_per_h: lPerH,
+        ha_per_h: haPerH,
+        days: days
+      });
+      saveFields();
+      renderFields();
+      hideBatch();
+      nameInput.value = '';
+    });
+
+    document.getElementById('clear-all').addEventListener('click', () => {
+      if (!fields.length) return;
+      if (!window.confirm('Удалить все сохранённые поля?')) return;
+      fields = [];
+      saveFields();
+      renderFields();
+      hideBatch();
+    });
+
+    calcAllBtn.addEventListener('click', async () => {
+      errorBox.hidden = true;
+      if (!fields.length) {
+        showError('Добавьте хотя бы одно поле');
+        return;
+      }
+
+      calcAllBtn.disabled = true;
+      calcAllBtn.textContent = 'Считаем…';
+
+      try {
+        const response = await fetch('/api/plan/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof data.detail === 'string' ? data.detail : 'Ошибка сервера');
+        }
+        renderBatch(data);
+      } catch (err) {
+        showError(err.message || 'Не удалось получить ответ');
+      } finally {
+        calcAllBtn.disabled = false;
+        calcAllBtn.textContent = 'Рассчитать все';
+      }
+    });
+
+    // Итоги сверху, таблица полей; crop и площадь берём из нашего запроса по порядку
+    function renderBatch(data) {
+      lastBatch = Array.isArray(data.fields) ? data.fields : [];
+      const totals = data.totals || {};
+      document.getElementById('tot-area').textContent = num(totals.area_ha, 1);
+      document.getElementById('tot-m3').textContent = num(totals.m3, 0);
+      document.getElementById('tot-diesel').textContent = num(totals.diesel_l, 1);
+      document.getElementById('tot-co2').textContent = num(totals.co2_kg, 1);
+
+      batchRows.innerHTML = '';
+      lastBatch.forEach((item, index) => {
+        const plan = item.plan || {};
+        const input = fields[index] || {};
+        const row = document.createElement('tr');
+
+        [
+          item.name,
+          CROPS[input.crop] || input.crop || '—',
+          num(input.area_ha, 1),
+          num(plan.m3, 0),
+          num(plan.diesel_l, 1),
+          num(plan.co2_kg, 1)
+        ].forEach((text) => {
+          const cell = document.createElement('td');
+          cell.textContent = text;
+          row.appendChild(cell);
+        });
+
+        row.addEventListener('click', () => showFieldPlan(index, row));
+        batchRows.appendChild(row);
+      });
+
+      resultBox.hidden = true;
+      batchBox.hidden = false;
+    }
+
+    // Клик по строке — дневная разбивка этого поля в карточке результата
+    function showFieldPlan(index, row) {
+      const item = lastBatch[index];
+      if (!item) return;
+      const plan = item.plan || {};
+      const input = fields[index] || {};
+      const daily = Array.isArray(plan.daily) ? plan.daily : [];
+      const cropName = CROPS[input.crop] || input.crop || '—';
+      const stageName = (STAGE_LABELS[plan.stage || input.stage] || '—').toLowerCase();
+      const zero = Number(plan.mm) === 0;
+
+      Array.from(batchRows.children).forEach((r) => r.classList.remove('selected'));
+      if (row) row.classList.add('selected');
+
+      document.getElementById('res-mm').textContent = num(plan.mm, 1);
+      document.getElementById('res-m3').textContent = num(plan.m3, 0);
+      document.getElementById('res-diesel').textContent = num(plan.diesel_l, 1);
+      document.getElementById('res-co2').textContent = num(plan.co2_kg, 1);
+      document.getElementById('res-days').textContent = daily.length;
+      document.getElementById('res-context').textContent =
+        `${item.name} · ${cropName} · стадия ${stageName} · ${num(input.area_ha, 1)} га · ${daily.length} дн.`;
+      document.getElementById('res-water-label').hidden = zero;
+      document.getElementById('res-zero').hidden = !zero;
+      methodKc.textContent = `${cropName} · ${stageName}: ${num(plan.kc, 2)}`;
+
+      renderDaily(daily);
+      resultBox.hidden = false;
+    }
+
+    renderFields();
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       errorBox.hidden = true;
@@ -343,7 +662,8 @@
         area_ha: Number(document.getElementById('area_ha').value),
         l_per_h: Number(document.getElementById('l_per_h').value),
         ha_per_h: Number(document.getElementById('ha_per_h').value),
-        days: Number(document.getElementById('days').value)
+        days: Number(document.getElementById('days').value),
+        stage: document.getElementById('stage').value
       };
 
       button.disabled = true;
@@ -369,13 +689,15 @@
         document.getElementById('res-m3').textContent = fmt(data.m3, 0);
         document.getElementById('res-diesel').textContent = fmt(data.diesel_l, 1);
         document.getElementById('res-co2').textContent = fmt(data.co2_kg, 1);
+        const stageName = (STAGE_LABELS[data.stage || body.stage] || '—').toLowerCase();
+
         document.getElementById('res-days').textContent = daysCount;
         document.getElementById('res-context').textContent =
-          `${cropName}, ${fmt(body.area_ha, 1)} га, ${daysCount} дн.`;
+          `${cropName}, стадия ${stageName}, ${fmt(body.area_ha, 1)} га, ${daysCount} дн.`;
         document.getElementById('res-water-label').hidden = zero;
         document.getElementById('res-zero').hidden = !zero;
 
-        methodKc.textContent = `${cropName}: ${data.kc != null ? fmt(data.kc, 2) : '—'}`;
+        methodKc.textContent = `${cropName} · ${stageName}: ${data.kc != null ? fmt(data.kc, 2) : '—'}`;
         renderDaily(daily);
         resultBox.hidden = false;
       } catch (err) {

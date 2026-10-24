@@ -92,6 +92,9 @@
     }
     button:hover { background: var(--green-dark); }
     button:disabled { opacity: 0.6; cursor: wait; }
+    button.btn-secondary { background: #fff; color: var(--green); border: 1px solid var(--green); }
+    button.btn-secondary:hover { background: #e9f6ee; }
+    .btn-gap { margin-top: 10px; }
 
     .result { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 14px; }
     .result h2 { margin: 0 0 10px; font-size: 1rem; }
@@ -150,6 +153,8 @@
 
     @media (max-width: 520px) {
       .panel { left: 8px; top: 8px; width: calc(100% - 16px); max-height: 62%; padding: 14px; }
+      form select, form input { font-size: 16px; } /* iOS Safari не зумит поле ввода */
+      button { min-height: 44px; } /* достижимо большим пальцем */
     }
   </style>
 </head>
@@ -193,7 +198,8 @@
       </div>
 
       <p class="hint" id="hint">Нажмите на карту, чтобы указать поле</p>
-      <button id="submit" type="submit">Рассчитать</button>
+      <button id="demo-fill" class="btn-secondary" type="button">Пример: Алматы</button>
+      <button id="submit" class="btn-gap" type="submit">Рассчитать</button>
     </form>
 
     <section class="result" id="result" hidden>
@@ -244,6 +250,8 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
+    const FORM_KEY = 'suaru_form_v1';
+
     let marker = null;
     const hint = document.getElementById('hint');
     const form = document.getElementById('plan-form');
@@ -272,10 +280,11 @@
       const { lat, lng } = event.latlng;
       hint.textContent = `Поле: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       hint.classList.add('ready');
+      saveForm();
     });
 
-    form.addEventListener('input', invalidateResult);
-    form.addEventListener('change', invalidateResult);
+    form.addEventListener('input', () => { invalidateResult(); saveForm(); });
+    form.addEventListener('change', () => { invalidateResult(); saveForm(); });
 
     function showError(text) {
       errorBox.textContent = text;
@@ -327,6 +336,85 @@
       });
     }
 
+    // ── Форма в localStorage: переживает перезагрузку и плохой Wi-Fi ──
+    function readForm() {
+      return {
+        crop: document.getElementById('crop').value,
+        area_ha: Number(document.getElementById('area_ha').value),
+        days: Number(document.getElementById('days').value),
+        l_per_h: Number(document.getElementById('l_per_h').value),
+        ha_per_h: Number(document.getElementById('ha_per_h').value),
+        lat: marker ? Number(marker.getLatLng().lat.toFixed(5)) : null,
+        lon: marker ? Number(marker.getLatLng().lng.toFixed(5)) : null
+      };
+    }
+
+    function saveForm() {
+      try {
+        localStorage.setItem(FORM_KEY, JSON.stringify(readForm()));
+      } catch (err) {
+        // приватный режим браузера — форма просто не сохранится
+      }
+    }
+
+    function restoreForm() {
+      let saved = null;
+      try {
+        saved = JSON.parse(localStorage.getItem(FORM_KEY) || 'null');
+      } catch (err) {
+        saved = null;
+      }
+      if (!saved || typeof saved !== 'object') return;
+
+      if (['wheat', 'barley', 'corn', 'potato', 'rice'].includes(saved.crop)) {
+        document.getElementById('crop').value = saved.crop;
+      }
+      const checks = [
+        ['area_ha', saved.area_ha, (v) => v > 0],
+        ['days', saved.days, (v) => Number.isInteger(v) && v >= 1 && v <= 7],
+        ['l_per_h', saved.l_per_h, (v) => v > 0],
+        ['ha_per_h', saved.ha_per_h, (v) => v > 0]
+      ];
+      checks.forEach(([id, value, ok]) => {
+        if (Number.isFinite(value) && ok(value)) document.getElementById(id).value = value;
+      });
+
+      if (Number.isFinite(saved.lat) && Number.isFinite(saved.lon) &&
+          Math.abs(saved.lat) <= 90 && Math.abs(saved.lon) <= 180) {
+        const latlng = L.latLng(saved.lat, saved.lon);
+        marker = L.marker(latlng).addTo(map);
+        map.setView(latlng, Math.max(map.getZoom(), 10));
+        hint.textContent = `Поле: ${saved.lat.toFixed(4)}, ${saved.lon.toFixed(4)}`;
+        hint.classList.add('ready');
+      }
+    }
+
+    // «Пример: Алматы» — только заполняет форму и маркер;
+    // цифры результата всё равно считает API, зашитых значений нет
+    document.getElementById('demo-fill').addEventListener('click', () => {
+      errorBox.hidden = true;
+      resultBox.hidden = true;
+
+      document.getElementById('crop').value = 'wheat';
+      document.getElementById('area_ha').value = 10;
+      document.getElementById('days').value = 3;
+      document.getElementById('l_per_h').value = 12;
+      document.getElementById('ha_per_h').value = 2;
+
+      const latlng = L.latLng(43.24, 76.89);
+      if (marker) {
+        marker.setLatLng(latlng);
+      } else {
+        marker = L.marker(latlng).addTo(map);
+      }
+      map.setView(latlng, 11);
+      hint.textContent = `Поле: ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
+      hint.classList.add('ready');
+      saveForm();
+    });
+
+    restoreForm();
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       errorBox.hidden = true;
@@ -349,12 +437,19 @@
       button.disabled = true;
       button.textContent = 'Считаем…';
 
+      let response;
       try {
-        const response = await fetch('/api/plan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
+        try {
+          response = await fetch('/api/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        } catch (netErr) {
+          const err = new Error('network');
+          err.isNetwork = true;
+          throw err;
+        }
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(data.detail || 'Ошибка сервера');
@@ -379,7 +474,9 @@
         renderDaily(daily);
         resultBox.hidden = false;
       } catch (err) {
-        showError(err.message || 'Не удалось получить ответ');
+        showError(err.isNetwork
+          ? 'Сервер не отвечает: проверьте интернет и нажмите «Рассчитать» ещё раз'
+          : (err.message || 'Не удалось получить ответ'));
       } finally {
         button.disabled = false;
         button.textContent = 'Рассчитать';

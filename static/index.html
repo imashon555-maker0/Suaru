@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suaru — оценка полива и топлива</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --green: #1f7a3f;
+      --green-dark: #145c2d;
+      --ink: #1c2b21;
+      --muted: #61756a;
+      --line: #e3ebe5;
+      --red: #b3261e;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--ink);
+    }
+    #map { position: absolute; inset: 0; background: #dfe9e2; }
+
+    .panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 1000;
+      width: 340px;
+      max-height: calc(100% - 32px);
+      overflow-y: auto;
+      padding: 18px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.97);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+    }
+    .brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+    .brand h1 { margin: 0; font-size: 1.5rem; color: var(--green); letter-spacing: -0.5px; }
+    .brand span {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--green);
+      background: #e7f4ec;
+      padding: 2px 6px;
+      border-radius: 999px;
+    }
+    .tagline { margin: 0 0 14px; font-size: 0.85rem; color: var(--muted); }
+
+    form label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    form select, form input {
+      width: 100%;
+      margin-top: 4px;
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      color: var(--ink);
+      background: #fff;
+    }
+    form select:focus, form input:focus {
+      outline: none;
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(31, 122, 63, 0.12);
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .hint {
+      margin: 4px 0 12px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: #f5f8f6;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .hint.ready { color: var(--green-dark); background: #e9f6ee; }
+    button {
+      width: 100%;
+      padding: 11px;
+      border: 0;
+      border-radius: 9px;
+      background: var(--green);
+      color: #fff;
+      font-size: 0.98rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: var(--green-dark); }
+    button:disabled { opacity: 0.6; cursor: wait; }
+
+    .result { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 14px; }
+    .result h2 { margin: 0 0 10px; font-size: 1rem; }
+    .metric { margin-bottom: 10px; }
+    .metric .value { font-size: 1.45rem; font-weight: 700; color: var(--green-dark); }
+    .metric .value small { font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+    .metric .label { font-size: 0.78rem; color: var(--muted); }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .mini {
+      background: #f5f8f6;
+      border-radius: 9px;
+      padding: 10px;
+    }
+    .mini .value { font-size: 1.15rem; font-weight: 700; color: var(--ink); }
+    .mini .value small { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+    .mini .label { font-size: 0.72rem; color: var(--muted); }
+    .note { margin: 10px 0 0; font-size: 0.72rem; color: var(--muted); line-height: 1.4; }
+    .result-sub { margin: -4px 0 10px; font-size: 0.78rem; color: var(--muted); }
+    .daily-title { margin: 14px 0 2px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+    .day {
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      gap: 8px;
+      align-items: baseline;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.76rem;
+    }
+    .day:last-child { border-bottom: 0; }
+    .day .date { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .day .rain { color: var(--muted); font-size: 0.72rem; }
+    .day .need { color: var(--green-dark); font-weight: 700; white-space: nowrap; text-align: right; }
+    .day.zero .need { color: var(--muted); font-weight: 600; }
+    .zero-label { color: var(--green); font-weight: 600; }
+    .method { margin-top: 14px; font-size: 0.76rem; color: var(--muted); }
+    .method summary { cursor: pointer; font-weight: 600; color: var(--green-dark); }
+    .method p { margin: 8px 0 0; line-height: 1.45; }
+
+    .error {
+      margin: 12px 0 0;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: #fdecea;
+      color: var(--red);
+      font-size: 0.82rem;
+    }
+    .panel footer {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      font-size: 0.7rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .panel footer a { color: var(--green); }
+
+    @media (max-width: 520px) {
+      .panel { left: 8px; top: 8px; width: calc(100% - 16px); max-height: 62%; padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <main class="panel">
+    <div class="brand">
+      <h1>Suaru</h1>
+      <span>оценка</span>
+    </div>
+    <p class="tagline">Вода, дизель и CO₂ для вашего поля</p>
+
+    <form id="plan-form">
+      <label>Культура
+        <select id="crop">
+          <option value="wheat">Пшеница</option>
+          <option value="barley">Ячмень</option>
+          <option value="corn">Кукуруза</option>
+          <option value="potato">Картофель</option>
+          <option value="rice">Рис</option>
+        </select>
+      </label>
+
+      <div class="grid2">
+        <label>Площадь, га
+          <input id="area_ha" type="number" min="0.1" step="0.1" value="10" required>
+        </label>
+        <label>Дней вперёд
+          <input id="days" type="number" min="1" max="7" step="1" value="3" required>
+        </label>
+      </div>
+
+      <div class="grid2">
+        <label>Топливо, л/ч
+          <input id="l_per_h" type="number" min="0.1" step="0.1" value="12" required>
+        </label>
+        <label>Обработка, га/ч
+          <input id="ha_per_h" type="number" min="0.1" step="0.1" value="2" required>
+        </label>
+      </div>
+
+      <p class="hint" id="hint">Нажмите на карту, чтобы указать поле</p>
+      <button id="submit" type="submit">Рассчитать</button>
+    </form>
+
+    <section class="result" id="result" hidden>
+      <h2>Оценка для поля</h2>
+      <p class="result-sub" id="res-context">—</p>
+      <div class="metric">
+        <div class="value"><span id="res-mm">—</span> <small>мм</small></div>
+        <div class="label" id="res-water-label">нужно полить за <span id="res-days">—</span> дн. · <span id="res-m3">—</span> м³</div>
+        <div class="label zero-label" id="res-zero" hidden>дождя достаточно — полив не нужен</div>
+      </div>
+      <div class="row3">
+        <div class="mini">
+          <div class="value"><span id="res-diesel">—</span> <small>л</small></div>
+          <div class="label">дизель на обработку</div>
+        </div>
+        <div class="mini">
+          <div class="value"><span id="res-co2">—</span> <small>кг</small></div>
+          <div class="label">CO₂ от дизеля</div>
+        </div>
+      </div>
+      <div id="daily"></div>
+      <p class="note">Это оценка: почва, стадия роста и потери при поливе не учитываются; дизель — один проход техники.</p>
+    </section>
+
+    <details class="method">
+      <summary>Как считаем</summary>
+      <p>Вода за день: <b>max(0, ET0 × Kc − дождь)</b>. ET0 и дождь — прогноз Open-Meteo; 1 мм на 1 га = 10 м³.</p>
+      <p>Kc — mid-season из FAO-56, Table 12. Для выбранной культуры: <span id="method-kc">—</span>.</p>
+      <p>Дизель: площадь × (л/ч ÷ га/ч) — один проход техники. CO₂: литры × 2.65 кг/л (IPCC 2006).</p>
+      <p>Почва, стадия роста и потери при поливе не учитываются — это оценка.</p>
+    </details>
+
+    <p class="error" id="error" hidden></p>
+
+    <footer>
+      Данные: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
+      <a href="https://www.fao.org/4/x0490e/x0490e0b.htm" target="_blank" rel="noopener">FAO-56</a><br>
+      Оценка, а не точный прогноз.
+    </footer>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Карта: фокус на Казахстане
+    const map = L.map('map').setView([48.0, 67.0], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    let marker = null;
+    const hint = document.getElementById('hint');
+    const form = document.getElementById('plan-form');
+    const button = document.getElementById('submit');
+    const errorBox = document.getElementById('error');
+    const resultBox = document.getElementById('result');
+    const dailyBox = document.getElementById('daily');
+    const methodKc = document.getElementById('method-kc');
+
+    // Скрыть старый результат: он относится к прежней точке или форме
+    function invalidateResult() {
+      resultBox.hidden = true;
+      errorBox.hidden = true;
+      dailyBox.innerHTML = '';
+      methodKc.textContent = '—';
+    }
+
+    // Клик по карте ставит или двигает маркер поля
+    map.on('click', (event) => {
+      invalidateResult();
+      if (marker) {
+        marker.setLatLng(event.latlng);
+      } else {
+        marker = L.marker(event.latlng).addTo(map);
+      }
+      const { lat, lng } = event.latlng;
+      hint.textContent = `Поле: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      hint.classList.add('ready');
+    });
+
+    form.addEventListener('input', invalidateResult);
+    form.addEventListener('change', invalidateResult);
+
+    function showError(text) {
+      errorBox.textContent = text;
+      errorBox.hidden = false;
+      resultBox.hidden = true;
+    }
+
+    function fmt(value, digits) {
+      return Number(value).toLocaleString('ru-RU', { maximumFractionDigits: digits });
+    }
+
+    function formatDate(iso) {
+      const parts = String(iso).split('-');
+      return parts.length === 3 ? `${parts[2]}.${parts[1]}` : iso;
+    }
+
+    // Строки «дождь / сколько полить» по дням
+    function renderDaily(days) {
+      dailyBox.innerHTML = '';
+      if (!days || !days.length) return;
+
+      const title = document.createElement('div');
+      title.className = 'daily-title';
+      title.textContent = 'По дням';
+      dailyBox.appendChild(title);
+
+      days.forEach((day) => {
+        const row = document.createElement('div');
+        row.className = 'day' + (day.need_mm > 0 ? '' : ' zero');
+
+        const date = document.createElement('span');
+        date.className = 'date';
+        date.textContent = formatDate(day.date);
+
+        const rain = document.createElement('span');
+        rain.className = 'rain';
+        rain.textContent = day.need_mm > 0
+          ? `дождь ${fmt(day.rain_mm, 1)} мм`
+          : 'дождя достаточно';
+
+        const need = document.createElement('span');
+        need.className = 'need';
+        need.textContent = day.need_mm > 0
+          ? `${fmt(day.need_mm, 1)} мм · ${fmt(day.need_m3, 0)} м³`
+          : '0 мм';
+
+        row.append(date, rain, need);
+        dailyBox.appendChild(row);
+      });
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorBox.hidden = true;
+
+      if (!marker) {
+        showError('Сначала нажмите на карту, чтобы указать поле');
+        return;
+      }
+
+      const body = {
+        lat: marker.getLatLng().lat,
+        lon: marker.getLatLng().lng,
+        crop: document.getElementById('crop').value,
+        area_ha: Number(document.getElementById('area_ha').value),
+        l_per_h: Number(document.getElementById('l_per_h').value),
+        ha_per_h: Number(document.getElementById('ha_per_h').value),
+        days: Number(document.getElementById('days').value)
+      };
+
+      button.disabled = true;
+      button.textContent = 'Считаем…';
+
+      try {
+        const response = await fetch('/api/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || 'Ошибка сервера');
+        }
+
+        const daily = Array.isArray(data.daily) ? data.daily : [];
+        const daysCount = daily.length || body.days;
+        const cropName = document.getElementById('crop').selectedOptions[0].textContent;
+        const zero = Number(data.mm) === 0;
+
+        document.getElementById('res-mm').textContent = fmt(data.mm, 1);
+        document.getElementById('res-m3').textContent = fmt(data.m3, 0);
+        document.getElementById('res-diesel').textContent = fmt(data.diesel_l, 1);
+        document.getElementById('res-co2').textContent = fmt(data.co2_kg, 1);
+        document.getElementById('res-days').textContent = daysCount;
+        document.getElementById('res-context').textContent =
+          `${cropName}, ${fmt(body.area_ha, 1)} га, ${daysCount} дн.`;
+        document.getElementById('res-water-label').hidden = zero;
+        document.getElementById('res-zero').hidden = !zero;
+
+        methodKc.textContent = `${cropName}: ${data.kc != null ? fmt(data.kc, 2) : '—'}`;
+        renderDaily(daily);
+        resultBox.hidden = false;
+      } catch (err) {
+        showError(err.message || 'Не удалось получить ответ');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Рассчитать';
+      }
+    });
+  </script>
+</body>
+</html>

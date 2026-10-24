@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Вход — Suaru</title>
+  <title>Sign in — Suaru</title>
   <style>
     :root {
       --green: #1f7a3f;
@@ -88,25 +88,28 @@
 </head>
 <body>
   <main class="card">
-    <div class="brand"><h1>Suaru</h1><span>вход</span></div>
-    <p class="tagline">Вода, дизель и CO₂ для вашего поля. Войдите, чтобы продолжить.</p>
+    <div class="brand"><h1>Suaru</h1><span>sign in</span></div>
+    <p class="tagline">Water, diesel and CO₂ for your field. Sign in to continue.</p>
 
     <form id="auth-form">
-      <label>Логин
+      <label>Username
         <input id="username" name="username" autocomplete="username" required minlength="3" maxlength="32">
       </label>
-      <label>Пароль
+      <label id="email-label" hidden>Email
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+      </label>
+      <label>Password
         <input id="password" name="password" type="password" autocomplete="current-password" required minlength="6">
       </label>
-      <button id="submit" type="submit">Войти</button>
+      <button id="submit" type="submit">Sign in</button>
       <p class="error" id="error" hidden></p>
     </form>
 
     <p class="switch">
-      <span id="switch-text">Ещё нет аккаунта?</span>
-      <a id="switch-link">Зарегистрироваться</a>
+      <span id="switch-text">No account yet?</span>
+      <a id="switch-link">Create one</a>
     </p>
-    <p class="hint">После регистрации сразу попадёте на карту.</p>
+    <p class="hint">You will land on the map right after signing up.</p>
   </main>
 
   <script>
@@ -116,14 +119,18 @@
     const switchText = document.getElementById('switch-text');
     const switchLink = document.getElementById('switch-link');
     const passwordInput = document.getElementById('password');
+    const emailLabel = document.getElementById('email-label');
+    const emailInput = document.getElementById('email');
     let mode = 'login';
 
     function setMode(next) {
       mode = next;
-      submitBtn.textContent = mode === 'login' ? 'Войти' : 'Зарегистрироваться';
-      switchText.textContent = mode === 'login' ? 'Ещё нет аккаунта?' : 'Уже есть аккаунт?';
-      switchLink.textContent = mode === 'login' ? 'Зарегистрироваться' : 'Войти';
+      submitBtn.textContent = mode === 'login' ? 'Sign in' : 'Create account';
+      switchText.textContent = mode === 'login' ? 'No account yet?' : 'Already have an account?';
+      switchLink.textContent = mode === 'login' ? 'Create one' : 'Sign in';
       passwordInput.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+      emailLabel.hidden = mode === 'login';
+      emailInput.required = mode === 'register';
       errorEl.hidden = true;
     }
     switchLink.addEventListener('click', () => setMode(mode === 'login' ? 'register' : 'login'));
@@ -136,21 +143,27 @@
         const resp = await fetch(mode === 'login' ? '/api/auth/login' : '/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: document.getElementById('username').value.trim(),
-            password: passwordInput.value,
-          }),
+          body: JSON.stringify(mode === 'register'
+            ? {
+                username: document.getElementById('username').value.trim(),
+                password: passwordInput.value,
+                email: emailInput.value.trim(),
+              }
+            : {
+                username: document.getElementById('username').value.trim(),
+                password: passwordInput.value,
+              }),
         });
         if (resp.ok) {
           location.href = '/';
           return;
         }
-        let detail = 'Не получилось войти, попробуйте ещё раз';
+        let detail = 'Something went wrong, please try again';
         try { detail = (await resp.json()).detail || detail; } catch (_) {}
         errorEl.textContent = detail;
         errorEl.hidden = false;
       } catch (_) {
-        errorEl.textContent = 'Сервер не отвечает: проверьте интернет и нажмите ещё раз';
+        errorEl.textContent = 'The server is not responding: check your connection and try again';
         errorEl.hidden = false;
       } finally {
         submitBtn.disabled = false;

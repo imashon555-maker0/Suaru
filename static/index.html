@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Suaru — оценка полива и топлива</title>
+  <title>Suaru — irrigation and fuel estimate</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     :root {
@@ -79,6 +79,16 @@
       padding: 8px 10px;
     }
     .hint.ready { color: var(--green-dark); background: #e9f6ee; }
+    .banner {
+      margin: 0 0 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #fff4d6;
+      color: #8a5a00;
+      font-size: 0.76rem;
+      line-height: 1.4;
+    }
+    .banner a { color: #8a5a00; font-weight: 700; }
     button {
       width: 100%;
       padding: 11px;
@@ -113,7 +123,7 @@
     .daily-title { margin: 14px 0 2px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
     .day {
       display: grid;
-      grid-template-columns: 42px 1fr auto;
+      grid-template-columns: 46px 1fr auto;
       gap: 8px;
       align-items: baseline;
       padding: 7px 0;
@@ -159,86 +169,90 @@
   <main class="panel">
     <div class="brand">
       <h1>Suaru</h1>
-      <span>оценка</span>
+      <span>estimate</span>
     </div>
-    <p class="tagline">Вода, дизель и CO₂ для вашего поля</p>
+    <p class="tagline">Water, diesel and CO₂ for your field</p>
+
+    <p class="banner" id="verify-banner" hidden>
+      Your email is not verified. <a href="/profile">Open profile</a> to resend the link.
+    </p>
 
     <form id="plan-form">
-      <label>Культура
+      <label>Crop
         <select id="crop">
-          <option value="wheat">Пшеница</option>
-          <option value="barley">Ячмень</option>
-          <option value="corn">Кукуруза</option>
-          <option value="potato">Картофель</option>
-          <option value="rice">Рис</option>
+          <option value="wheat">Wheat</option>
+          <option value="barley">Barley</option>
+          <option value="corn">Corn</option>
+          <option value="potato">Potato</option>
+          <option value="rice">Rice</option>
         </select>
       </label>
 
       <div class="grid2">
-        <label>Площадь, га
+        <label>Area, ha
           <input id="area_ha" type="number" min="0.1" step="0.1" value="10" required>
         </label>
-        <label>Дней вперёд
+        <label>Days ahead
           <input id="days" type="number" min="1" max="7" step="1" value="3" required>
         </label>
       </div>
 
       <div class="grid2">
-        <label>Топливо, л/ч
+        <label>Fuel, L/h
           <input id="l_per_h" type="number" min="0.1" step="0.1" value="12" required>
         </label>
-        <label>Обработка, га/ч
+        <label>Speed, ha/h
           <input id="ha_per_h" type="number" min="0.1" step="0.1" value="2" required>
         </label>
       </div>
 
-      <p class="hint" id="hint">Нажмите на карту, чтобы указать поле</p>
-      <button id="submit" type="submit">Рассчитать</button>
+      <p class="hint" id="hint">Click the map to set the field location</p>
+      <button id="submit" type="submit">Calculate</button>
     </form>
 
     <section class="result" id="result" hidden>
-      <h2>Оценка для поля</h2>
+      <h2>Field estimate</h2>
       <p class="result-sub" id="res-context">—</p>
       <div class="metric">
-        <div class="value"><span id="res-mm">—</span> <small>мм</small></div>
-        <div class="label" id="res-water-label">нужно полить за <span id="res-days">—</span> дн. · <span id="res-m3">—</span> м³</div>
-        <div class="label zero-label" id="res-zero" hidden>дождя достаточно — полив не нужен</div>
+        <div class="value"><span id="res-mm">—</span> <small>mm</small></div>
+        <div class="label" id="res-water-label">irrigation needed over <span id="res-days">—</span> days · <span id="res-m3">—</span> m³</div>
+        <div class="label zero-label" id="res-zero" hidden>enough rain — no irrigation needed</div>
       </div>
       <div class="row3">
         <div class="mini">
-          <div class="value"><span id="res-diesel">—</span> <small>л</small></div>
-          <div class="label">дизель на обработку</div>
+          <div class="value"><span id="res-diesel">—</span> <small>L</small></div>
+          <div class="label">diesel per pass</div>
         </div>
         <div class="mini">
-          <div class="value"><span id="res-co2">—</span> <small>кг</small></div>
-          <div class="label">CO₂ от дизеля</div>
+          <div class="value"><span id="res-co2">—</span> <small>kg</small></div>
+          <div class="label">CO₂ from diesel</div>
         </div>
       </div>
       <div id="daily"></div>
-      <p class="note">Это оценка: почва, стадия роста и потери при поливе не учитываются; дизель — один проход техники.</p>
+      <p class="note">This is an estimate: soil, growth stage and irrigation losses are not modelled; diesel covers one machine pass.</p>
     </section>
 
     <details class="method">
-      <summary>Как считаем</summary>
-      <p>Вода за день: <b>max(0, ET0 × Kc − дождь)</b>. ET0 и дождь — прогноз Open-Meteo; 1 мм на 1 га = 10 м³.</p>
-      <p>Kc — mid-season из FAO-56, Table 12. Для выбранной культуры: <span id="method-kc">—</span>.</p>
-      <p>Дизель: площадь × (л/ч ÷ га/ч) — один проход техники. CO₂: литры × 2.65 кг/л (IPCC 2006).</p>
-      <p>Почва, стадия роста и потери при поливе не учитываются — это оценка.</p>
+      <summary>How we calculate</summary>
+      <p>Daily water need: <b>max(0, ET0 × Kc − rain)</b>. ET0 and rain come from the Open-Meteo forecast; 1 mm over 1 ha = 10 m³.</p>
+      <p>Kc — mid-season value from FAO-56, Table 12. For the selected crop: <span id="method-kc">—</span>.</p>
+      <p>Diesel: area × (L/h ÷ ha/h) — one machine pass. CO₂: litres × 2.65 kg/L (IPCC 2006).</p>
+      <p>Soil, growth stage and irrigation losses are not modelled — this is an estimate.</p>
     </details>
 
     <p class="error" id="error" hidden></p>
 
     <footer>
-      Данные: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
+      Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) ·
       <a href="https://www.fao.org/4/x0490e/x0490e0b.htm" target="_blank" rel="noopener">FAO-56</a><br>
-      Оценка, а не точный прогноз. ·
-      <span id="whoami"></span><a href="#" id="logout">Выйти</a>
+      Estimate, not an exact forecast. ·
+      <span id="whoami"></span><a href="/profile">Profile</a> · <a href="#" id="logout">Log out</a>
     </footer>
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Карта: фокус на Казахстане
+    // Map: focus on Kazakhstan
     const map = L.map('map').setView([48.0, 67.0], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -254,7 +268,7 @@
     const dailyBox = document.getElementById('daily');
     const methodKc = document.getElementById('method-kc');
 
-    // Скрыть старый результат: он относится к прежней точке или форме
+    // Hide the previous result: it belongs to the old point or form values
     function invalidateResult() {
       resultBox.hidden = true;
       errorBox.hidden = true;
@@ -262,7 +276,7 @@
       methodKc.textContent = '—';
     }
 
-    // Клик по карте ставит или двигает маркер поля
+    // A map click places or moves the field marker
     map.on('click', (event) => {
       invalidateResult();
       if (marker) {
@@ -271,7 +285,7 @@
         marker = L.marker(event.latlng).addTo(map);
       }
       const { lat, lng } = event.latlng;
-      hint.textContent = `Поле: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      hint.textContent = `Field: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       hint.classList.add('ready');
     });
 
@@ -285,22 +299,22 @@
     }
 
     function fmt(value, digits) {
-      return Number(value).toLocaleString('ru-RU', { maximumFractionDigits: digits });
+      return Number(value).toLocaleString('en-US', { maximumFractionDigits: digits });
     }
 
     function formatDate(iso) {
       const parts = String(iso).split('-');
-      return parts.length === 3 ? `${parts[2]}.${parts[1]}` : iso;
+      return parts.length === 3 ? `${parts[1]}/${parts[2]}` : iso;
     }
 
-    // Строки «дождь / сколько полить» по дням
+    // Daily rain / irrigation rows
     function renderDaily(days) {
       dailyBox.innerHTML = '';
       if (!days || !days.length) return;
 
       const title = document.createElement('div');
       title.className = 'daily-title';
-      title.textContent = 'По дням';
+      title.textContent = 'By day';
       dailyBox.appendChild(title);
 
       days.forEach((day) => {
@@ -314,14 +328,14 @@
         const rain = document.createElement('span');
         rain.className = 'rain';
         rain.textContent = day.need_mm > 0
-          ? `дождь ${fmt(day.rain_mm, 1)} мм`
-          : 'дождя достаточно';
+          ? `rain ${fmt(day.rain_mm, 1)} mm`
+          : 'enough rain';
 
         const need = document.createElement('span');
         need.className = 'need';
         need.textContent = day.need_mm > 0
-          ? `${fmt(day.need_mm, 1)} мм · ${fmt(day.need_m3, 0)} м³`
-          : '0 мм';
+          ? `${fmt(day.need_mm, 1)} mm · ${fmt(day.need_m3, 0)} m³`
+          : '0 mm';
 
         row.append(date, rain, need);
         dailyBox.appendChild(row);
@@ -333,7 +347,7 @@
       errorBox.hidden = true;
 
       if (!marker) {
-        showError('Сначала нажмите на карту, чтобы указать поле');
+        showError('Click the map first to set the field location');
         return;
       }
 
@@ -348,7 +362,7 @@
       };
 
       button.disabled = true;
-      button.textContent = 'Считаем…';
+      button.textContent = 'Calculating…';
 
       try {
         const response = await fetch('/api/plan', {
@@ -358,7 +372,7 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(data.detail || 'Ошибка сервера');
+          throw new Error(data.detail || 'Server error');
         }
 
         const daily = Array.isArray(data.daily) ? data.daily : [];
@@ -372,7 +386,7 @@
         document.getElementById('res-co2').textContent = fmt(data.co2_kg, 1);
         document.getElementById('res-days').textContent = daysCount;
         document.getElementById('res-context').textContent =
-          `${cropName}, ${fmt(body.area_ha, 1)} га, ${daysCount} дн.`;
+          `${cropName}, ${fmt(body.area_ha, 1)} ha, ${daysCount} days`;
         document.getElementById('res-water-label').hidden = zero;
         document.getElementById('res-zero').hidden = !zero;
 
@@ -380,18 +394,21 @@
         renderDaily(daily);
         resultBox.hidden = false;
       } catch (err) {
-        showError(err.message || 'Не удалось получить ответ');
+        showError(err.message || 'Could not get a response');
       } finally {
         button.disabled = false;
-        button.textContent = 'Рассчитать';
+        button.textContent = 'Calculate';
       }
     });
 
-    // Сессия: показать, кто вошёл, и выйти
+    // Session: show who is signed in and log out
     fetch('/api/auth/me')
       .then(r => (r.ok ? r.json() : null))
       .then(me => {
         if (me && me.username) document.getElementById('whoami').textContent = me.username + ' · ';
+        if (me && me.email && !me.email_verified) {
+          document.getElementById('verify-banner').hidden = false;
+        }
       })
       .catch(() => {});
     document.getElementById('logout').addEventListener('click', async (e) => {

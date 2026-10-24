@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile — Suaru</title>
+  <style>
+    :root {
+      --green: #1f7a3f;
+      --green-dark: #145c2d;
+      --ink: #1c2b21;
+      --muted: #61756a;
+      --line: #e3ebe5;
+      --red: #b3261e;
+      --amber: #8a5a00;
+      --amber-bg: #fff4d6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--ink);
+      background: #dfe9e2;
+    }
+    .card {
+      width: 100%;
+      max-width: 380px;
+      padding: 22px 20px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.97);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+    }
+    .brand { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+    .brand h1 { margin: 0; font-size: 1.5rem; color: var(--green); letter-spacing: -0.5px; }
+    .brand span {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--green);
+      background: #e7f4ec;
+      padding: 2px 6px;
+      border-radius: 999px;
+    }
+    .tagline { margin: 0 0 16px; font-size: 0.85rem; color: var(--muted); }
+    dl { margin: 0 0 6px; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.86rem;
+    }
+    .row dt { color: var(--muted); }
+    .row dd { margin: 0; font-weight: 600; text-align: right; word-break: break-all; }
+    .status-ok { color: var(--green-dark); }
+    .status-warn { color: var(--amber); }
+    .banner {
+      margin: 12px 0 0;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: var(--amber-bg);
+      color: var(--amber);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+    .msg { margin: 10px 0 0; font-size: 0.82rem; color: var(--green-dark); }
+    .msg.error { color: var(--red); }
+    h2 { margin: 20px 0 8px; font-size: 0.95rem; }
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    input {
+      width: 100%;
+      margin-top: 4px;
+      padding: 10px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      color: var(--ink);
+      background: #fff;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(31, 122, 63, 0.12);
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--green);
+      cursor: pointer;
+    }
+    button:hover { background: var(--green-dark); }
+    button.secondary { background: #e7f4ec; color: var(--green-dark); }
+    button.secondary:hover { background: #d8ecdf; }
+    button:disabled { opacity: 0.6; cursor: default; }
+    .links { margin-top: 18px; display: flex; justify-content: space-between; font-size: 0.82rem; }
+    .links a { color: var(--green); font-weight: 600; text-decoration: none; }
+    .hint { margin: 10px 0 0; font-size: 0.74rem; color: var(--muted); line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><h1>Suaru</h1><span>profile</span></div>
+    <p class="tagline">Account details and security settings.</p>
+
+    <dl>
+      <div class="row"><dt>Username</dt><dd id="username">—</dd></div>
+      <div class="row"><dt>Email</dt><dd id="email">—</dd></div>
+      <div class="row"><dt>Email status</dt><dd id="email-status">—</dd></div>
+    </dl>
+
+    <div id="verify-block" hidden>
+      <p class="banner" id="verify-banner">
+        Your email is not verified yet. Open the link from the email, or resend it.
+      </p>
+      <button class="secondary" id="resend" type="button">Resend verification email</button>
+    </div>
+    <p class="msg" id="verify-msg" hidden></p>
+
+    <h2>Change password</h2>
+    <form id="password-form">
+      <label>Current password
+        <input id="current-password" type="password" autocomplete="current-password" required>
+      </label>
+      <label>New password (at least 8 characters)
+        <input id="new-password" type="password" autocomplete="new-password" required minlength="8">
+      </label>
+      <button id="password-submit" type="submit">Update password</button>
+      <p class="msg" id="password-msg" hidden></p>
+    </form>
+
+    <p class="hint">Changing the password signs out every other device.</p>
+
+    <div class="links">
+      <a href="/">Back to map</a>
+      <a href="#" id="logout">Log out</a>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function showMsg(el, text, isError = false) {
+      el.textContent = text;
+      el.hidden = false;
+      el.classList.toggle('error', isError);
+    }
+
+    function renderProfile(profile) {
+      $('username').textContent = profile.username || '—';
+      $('email').textContent = profile.email || 'No email on file';
+      const verified = !!profile.email_verified;
+      const status = $('email-status');
+      status.textContent = verified ? 'Verified' : 'Not verified';
+      status.className = verified ? 'status-ok' : 'status-warn';
+      $('verify-block').hidden = verified || !profile.email;
+    }
+
+    function showVerifyResult(data, ok) {
+      const msg = $('verify-msg');
+      msg.hidden = true;
+      msg.classList.toggle('error', !ok);
+      msg.textContent = data.detail || (ok ? 'Verification email sent' : 'Could not send the email');
+      msg.hidden = false;
+      if (data.verification_url) {
+        msg.append(' ');
+        const link = document.createElement('a');
+        link.href = data.verification_url;
+        link.textContent = 'Open the verification link';
+        msg.append(link);
+      }
+    }
+
+    async function load() {
+      const resp = await fetch('/api/profile');
+      if (resp.status === 401) {
+        location.href = '/login';
+        return;
+      }
+      const profile = await resp.json();
+      renderProfile(profile);
+      if (!profile.email_verified && profile.email && profile.smtp_configured === false) {
+        $('verify-banner').textContent =
+          'Email delivery is not configured in this demo. Press the button to get your verification link.';
+      }
+    }
+    load().catch(() => showMsg($('verify-msg'), 'Could not load the profile, try again', true));
+
+    $('resend').addEventListener('click', async () => {
+      const button = $('resend');
+      button.disabled = true;
+      try {
+        const resp = await fetch('/api/auth/resend-verification', { method: 'POST' });
+        const data = await resp.json().catch(() => ({}));
+        showVerifyResult(data, resp.ok);
+      } catch (_) {
+        showMsg($('verify-msg'), 'The server is not responding, try again', true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $('password-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = $('password-submit');
+      button.disabled = true;
+      try {
+        const resp = await fetch('/api/auth/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            current_password: $('current-password').value,
+            new_password: $('new-password').value,
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+          $('password-form').reset();
+          showMsg($('password-msg'), data.detail || 'Password updated');
+        } else {
+          showMsg($('password-msg'), data.detail || 'Could not update the password', true);
+        }
+      } catch (_) {
+        showMsg($('password-msg'), 'The server is not responding, try again', true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    $('logout').addEventListener('click', async (event) => {
+      event.preventDefault();
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      location.href = '/login';
+    });
+  </script>
+</body>
+</html>

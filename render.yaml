@@ -1,0 +1,14 @@
+# Render Blueprint: one web service, FastAPI serves both the API and static/.
+# Deploy: Render -> New -> Blueprint -> pick this repo. See README for details.
+services:
+  - type: web
+    name: suaru
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # FastAPI /docs always answers 200 while the app is up.
+    healthCheckPath: /docs
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.11"

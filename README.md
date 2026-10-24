@@ -8,6 +8,10 @@
 
 Проект сделан на хакатоне AuaHack (трек «Экология», Казахстан).
 
+Стартовый экран (карта и форма поля):
+
+![Стартовый экран Suaru](docs/screenshot.png)
+
 ## Что показывает
 
 По точке на карте и данным поля:
@@ -48,6 +52,9 @@ calc.py            # формулы: вода, дизель, CO2
 static/index.html  # карта Leaflet, форма, карточка результата
 test_calc.py       # простые проверки формул
 requirements.txt
+render.yaml        # Render Blueprint: деплой одним нажатием
+DEMO.md            # сценарий демо на 3 минуты
+docs/screenshot.png
 README.md
 ```
 
@@ -108,15 +115,33 @@ python test_calc.py
 Ошибки: `400` — неверные данные (текст на русском), `502` — Open-Meteo не ответил
 или вернул неполные данные.
 
+Контракт стабилен: поля `mm`, `m3`, `diesel_l`, `co2_kg`, `kc`, `daily[]` не
+переименовываются и не удаляются. Новые поля добавляются только аддитивно,
+клиент обязан игнорировать незнакомые поля.
+
+## Демо
+
+Пошаговый сценарий демонстрации на три минуты — в [DEMO.md](DEMO.md):
+что показать, какие цифры пересказать и что делать, если интернет подвёл.
+
 ## Деплой на Render
 
+Всё уже описано в [render.yaml](render.yaml) (Blueprint):
+
 1. Запушить репозиторий на GitHub.
-2. Render → New → Web Service → подключить репозиторий.
-3. Build command: `pip install -r requirements.txt`
-4. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+2. Render → New → Blueprint → подключить репозиторий — сервис создаётся
+   по `render.yaml` (Python 3.12, health check `/docs`).
+3. После деплоя вставить публичную ссылку в начало README.
+
+Если Blueprint не используется, тот же результат вручную:
+
+1. Render → New → Web Service → подключить репозиторий.
+2. Build command: `pip install -r requirements.txt`
+3. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 
 FastAPI сам раздаёт `static/`, поэтому нужен один сервис.
-После деплоя вставьте публичную ссылку в начало README.
+Free-план засыпает после простоя: перед демо открыть ссылку заранее,
+чтобы сервис разбудился (1–2 минуты).
 
 ## Ограничения модели
 

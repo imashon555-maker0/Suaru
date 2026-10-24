@@ -1,18 +1,26 @@
 # calc.py
 # Formulas for Suaru. All results are simplified estimates.
 
-# Crop coefficients (Kc) for the mid-season stage.
+# Crop coefficients (Kc) by growth stage.
 # Source: FAO-56 "Crop evapotranspiration" (Allen et al., 1998), Table 12.
 # https://www.fao.org/4/x0490e/x0490e0b.htm
-# Checked against Table 12: wheat 1.15, barley 1.15, maize 1.20,
-# potato 1.15, rice 1.20.
+#
+# Notes on the chosen values:
+# - Wheat: spring wheat. Winter wheat Kc ini is 0.40 (frozen soils) or 0.70
+#   (non-frozen), Kc end 0.25-0.40.
+# - Corn: Kc end 0.60 for harvest at high grain moisture; 0.35 after field drying.
+# - Rice: Kc end 0.90; 0.60 for dry harvest.
+# - Potato: Kc end 0.75; about 0.40 for long-season potatoes with vine kill.
 KC = {
-    "wheat": 1.15,
-    "barley": 1.15,
-    "corn": 1.20,
-    "potato": 1.15,
-    "rice": 1.20,
+    "wheat": {"ini": 0.30, "mid": 1.15, "end": 0.25},
+    "barley": {"ini": 0.30, "mid": 1.15, "end": 0.25},
+    "corn": {"ini": 0.30, "mid": 1.20, "end": 0.60},
+    "potato": {"ini": 0.50, "mid": 1.15, "end": 0.75},
+    "rice": {"ini": 1.05, "mid": 1.20, "end": 0.90},
 }
+
+# Growth stages accepted by the API.
+STAGES = ("ini", "mid", "end")
 
 # Diesel emission factor: kg CO2 per liter of diesel.
 # Source: IPCC 2006 Guidelines, Vol. 2, Ch. 2, Table 2.2: 74.1 kg CO2/TJ.
@@ -20,6 +28,11 @@ KC = {
 # 74.1 * 43.0 / 1000 * 0.832 = 2.65 kg CO2/l.
 # Density example: UNFCCC, Energy Sector (2016), "density of diesel 0.832 kg/litres".
 CO2_PER_L = 2.65
+
+
+def crop_kc(crop, stage="mid"):
+    """Return the FAO-56 Kc for a crop and growth stage."""
+    return KC[crop][stage]
 
 
 def daily_water_mm(et0_mm, rain_mm, kc):

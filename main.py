@@ -34,6 +34,11 @@ class PlanRequest(BaseModel):
         description="Культура: wheat, barley, corn, potato, rice",
         examples=["wheat"],
     )
+    stage: str = Field(
+        "mid",
+        description="Стадия роста: ini (начало), mid (середина), end (конец)",
+        examples=["mid"],
+    )
     area_ha: float = Field(..., description="Площадь поля, га", examples=[10])
     l_per_h: float = Field(..., description="Расход топлива, л/ч", examples=[12])
     ha_per_h: float = Field(..., description="Скорость обработки, га/ч", examples=[2])
@@ -53,7 +58,8 @@ class PlanResponse(BaseModel):
     m3: float = Field(..., description="Суммарный объём воды, м³", examples=[483.0])
     diesel_l: float = Field(..., description="Дизель на обработку, л", examples=[60.0])
     co2_kg: float = Field(..., description="CO2 от дизеля, кг", examples=[159.0])
-    kc: float = Field(..., description="Коэффициент культуры Kc (mid-season)", examples=[1.15])
+    stage: str = Field(..., description="Стадия роста", examples=["mid"])
+    kc: float = Field(..., description="Коэффициент культуры Kc для выбранной стадии", examples=[1.15])
     daily: list[DailyPlan] = Field(..., description="Разбивка по дням")
 
 
@@ -136,6 +142,8 @@ async def api_plan(req: PlanRequest):
     # Validation with clear Russian messages
     if req.crop not in calc.KC:
         raise HTTPException(status_code=400, detail="Неизвестная культура")
+    if req.stage not in calc.STAGES:
+        raise HTTPException(status_code=400, detail="Неизвестная стадия роста")
     if req.area_ha <= 0:
         raise HTTPException(status_code=400, detail="Площадь поля должна быть больше нуля")
     if req.l_per_h <= 0:
@@ -147,7 +155,7 @@ async def api_plan(req: PlanRequest):
     if not (1 <= req.days <= 7):
         raise HTTPException(status_code=400, detail="Количество дней должно быть от 1 до 7")
 
-    kc = calc.KC[req.crop]
+    kc = calc.crop_kc(req.crop, req.stage)
     dates, et0, rain = await fetch_weather(req.lat, req.lon, req.days)
 
     daily = []
@@ -174,6 +182,7 @@ async def api_plan(req: PlanRequest):
         "m3": round(m3, 2),
         "diesel_l": round(diesel, 2),
         "co2_kg": round(co2, 2),
+        "stage": req.stage,
         "kc": kc,
         "daily": daily,
     }

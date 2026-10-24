@@ -1,0 +1,16 @@
+# Render Blueprint: one web service, FastAPI serves both the API and static/.
+# Deploy AFTER the backend branch merges: /api/health lands there, and Render
+# fails the deploy while healthCheckPath answers 404.
+services:
+  - type: web
+    name: suaru
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # GET /api/health -> {"status": "ok"}; also used to warm the link up
+    # before the demo.
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.11"

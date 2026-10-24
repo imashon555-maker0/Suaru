@@ -110,6 +110,7 @@
     .mini .label { font-size: 0.72rem; color: var(--muted); }
     .note { margin: 10px 0 0; font-size: 0.72rem; color: var(--muted); line-height: 1.4; }
     .result-sub { margin: -4px 0 10px; font-size: 0.78rem; color: var(--muted); }
+    .stage-note { margin: 2px 0 10px; font-size: 0.74rem; color: var(--muted); }
     .daily-title { margin: 14px 0 2px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
     .day {
       display: grid;
@@ -174,6 +175,14 @@
         </select>
       </label>
 
+      <label>Стадия роста
+        <select id="stage">
+          <option value="ini">Начальная (ini)</option>
+          <option value="mid" selected>Середина сезона (mid)</option>
+          <option value="end">Затухание (end)</option>
+        </select>
+      </label>
+
       <div class="grid2">
         <label>Площадь, га
           <input id="area_ha" type="number" min="0.1" step="0.1" value="10" required>
@@ -199,6 +208,7 @@
     <section class="result" id="result" hidden>
       <h2>Оценка для поля</h2>
       <p class="result-sub" id="res-context">—</p>
+      <p class="stage-note" id="res-stage-note" hidden></p>
       <div class="metric">
         <div class="value"><span id="res-mm">—</span> <small>мм</small></div>
         <div class="label" id="res-water-label">нужно полить за <span id="res-days">—</span> дн. · <span id="res-m3">—</span> м³</div>
@@ -215,15 +225,15 @@
         </div>
       </div>
       <div id="daily"></div>
-      <p class="note">Это оценка: почва, стадия роста и потери при поливе не учитываются; дизель — один проход техники.</p>
+      <p class="note">Это оценка: почва и потери при поливе не учитываются; стадия роста задаёт Kc (FAO-56); дизель — один проход техники.</p>
     </section>
 
     <details class="method">
       <summary>Как считаем</summary>
       <p>Вода за день: <b>max(0, ET0 × Kc − дождь)</b>. ET0 и дождь — прогноз Open-Meteo; 1 мм на 1 га = 10 м³.</p>
-      <p>Kc — mid-season из FAO-56, Table 12. Для выбранной культуры: <span id="method-kc">—</span>.</p>
+      <p>Kc — из FAO-56, Table 12 для выбранной стадии роста: начальная (ini), середина сезона (mid), затухание (end). Для текущего расчёта: <span id="method-kc">—</span>.</p>
       <p>Дизель: площадь × (л/ч ÷ га/ч) — один проход техники. CO₂: литры × 2.65 кг/л (IPCC 2006).</p>
-      <p>Почва, стадия роста и потери при поливе не учитываются — это оценка.</p>
+      <p>Почва и потери при поливе не учитываются — это оценка.</p>
     </details>
 
     <p class="error" id="error" hidden></p>
@@ -243,6 +253,9 @@
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
+
+    const STAGE_LABELS = { ini: 'начальная', mid: 'середина сезона', end: 'затухание' };
+    const stageLabel = (stage) => STAGE_LABELS[stage] || stage || '';
 
     let marker = null;
     const hint = document.getElementById('hint');
@@ -316,6 +329,12 @@
           ? `дождь ${fmt(day.rain_mm, 1)} мм`
           : 'дождя достаточно';
 
+        // Стадия и Kc за день — только если прислал сервер (аддитивное поле)
+        const dayBits = [];
+        if (day.stage) dayBits.push(stageLabel(day.stage));
+        if (day.kc != null) dayBits.push(`Kc ${fmt(day.kc, 2)}`);
+        if (dayBits.length) rain.textContent += ` · ${dayBits.join(' · ')}`;
+
         const need = document.createElement('span');
         need.className = 'need';
         need.textContent = day.need_mm > 0
@@ -343,7 +362,8 @@
         area_ha: Number(document.getElementById('area_ha').value),
         l_per_h: Number(document.getElementById('l_per_h').value),
         ha_per_h: Number(document.getElementById('ha_per_h').value),
-        days: Number(document.getElementById('days').value)
+        days: Number(document.getElementById('days').value),
+        stage: document.getElementById('stage').value
       };
 
       button.disabled = true;
@@ -369,13 +389,27 @@
         document.getElementById('res-m3').textContent = fmt(data.m3, 0);
         document.getElementById('res-diesel').textContent = fmt(data.diesel_l, 1);
         document.getElementById('res-co2').textContent = fmt(data.co2_kg, 1);
+        // Аддитивный контракт: stage и kc в ответе опциональны
+        const serverStage = data.stage || null;
+        const stageNote = document.getElementById('res-stage-note');
+        stageNote.hidden = true;
+        if (!serverStage) {
+          stageNote.textContent = 'стадия пока не учитывается сервером — расчёт по стадии mid';
+          stageNote.hidden = false;
+        } else if (serverStage !== body.stage) {
+          stageNote.textContent = `сервер рассчитал по стадии «${stageLabel(serverStage)}»`;
+          stageNote.hidden = false;
+        }
+
         document.getElementById('res-days').textContent = daysCount;
         document.getElementById('res-context').textContent =
-          `${cropName}, ${fmt(body.area_ha, 1)} га, ${daysCount} дн.`;
+          `${cropName}, стадия ${stageLabel(body.stage)}, ${fmt(body.area_ha, 1)} га, ${daysCount} дн.`;
         document.getElementById('res-water-label').hidden = zero;
         document.getElementById('res-zero').hidden = !zero;
 
-        methodKc.textContent = `${cropName}: ${data.kc != null ? fmt(data.kc, 2) : '—'}`;
+        const kcStage = serverStage ? ` · ${stageLabel(serverStage)}` : '';
+        methodKc.textContent =
+          `${cropName}${kcStage}: ${data.kc != null ? fmt(data.kc, 2) : '—'}`;
         renderDaily(daily);
         resultBox.hidden = false;
       } catch (err) {

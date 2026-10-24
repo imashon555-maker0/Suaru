@@ -175,6 +175,13 @@ async def fetch_weather(lat: float, lon: float, days: int):
     return result
 
 
+# ── GET /api/health ───────────────────────────────────────────
+@app.get("/api/health")
+async def api_health():
+    """Liveness check for hosting and for warming the link before a demo."""
+    return {"status": "ok"}
+
+
 # ── Helpers for one field ──────────────────────────────────
 def validate_field(req: PlanRequest, prefix: str = ""):
     """Check one field and raise 400 with a Russian message.

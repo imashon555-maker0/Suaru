@@ -1,5 +1,5 @@
 # main.py
-# FastAPI backend for Suaru: POST /api/plan + serving static/index.html.
+# FastAPI backend for Suaru: plan endpoints + serving static/index.html.
 
 import asyncio
 import pathlib
